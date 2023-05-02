@@ -12,12 +12,3 @@ It's posible with FC lib<br></p>
 <img src = "./argm.png">
 <p>The new one class also going to use standart convolution arguments</p>
 <p>But there are no as aarguments, as padding or starait</p>
-<code>
-    class FusedConvBN(nn.Module):<Br>
-     def __init__(self, in_channels, out_channels, kernel_size, exp_avg_factor=0.1,
-                 eps=1e-3, device=None, dtype=None):<Br>
-         super(FusedConvBN, self).__init__()<Br>
-         factory_kwargs = {'device': device, 'dtype': dtype}<Br>
-     }<Br>
-     return null<Br>
-    }</code></p>
