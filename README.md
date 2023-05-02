@@ -12,3 +12,4 @@ It's posible with FC lib<br></p>
 <img src = "./argm.png">
 <p>The new one class also going to use standart convolution arguments</p>
 <p>But there are no as aarguments, as padding or starait</p>
+<img src = "./Module_with_FC.png">
