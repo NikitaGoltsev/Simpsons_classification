@@ -1,7 +1,8 @@
 import torch
 from torch.autograd.function import once_differentiable
 import torch.nn.functional as F
-
+import torch.nn as nn
+import math
 # That's just copy from PyTorcch guide
 def convolution_backward(grad_out, X, weight):
     grad_input = F.conv2d(X.transpose(0, 1), grad_out.transpose(0, 1)).transpose(0, 1)
@@ -83,3 +84,63 @@ class BatchNorm(torch.autograd.Function):
     def backward(ctx, grad_out):
         X, = ctx.saved_tensors
         return batch_norm_backward(grad_out, X, ctx.sum, ctx.sqrt_var, ctx.N, ctx.eps)
+
+class FusedConvBN2DFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, X, conv_weight, eps=1e-3):
+        assert X.ndim == 4  # N, C, H, W
+        # (1) Only need to save this single buffer for backward!
+        ctx.save_for_backward(X, conv_weight)
+
+        # (2) Exact same Conv2D forward from example above
+        X = F.conv2d(X, conv_weight)
+        # (3) Exact same BatchNorm2D forward from example above
+        sum = X.sum(dim=(0, 2, 3))
+        var = X.var(unbiased=True, dim=(0, 2, 3))
+        N = X.numel() / X.size(1)
+        sqrt_var = torch.sqrt(var)
+        ctx.eps = eps
+        ctx.sum = sum
+        ctx.N = N
+        ctx.sqrt_var = sqrt_var
+        mean = sum / N
+        denom = sqrt_var + eps
+        # Try to do as many things in-place as possible
+        # Instead of `out = (X - a) / b`, doing `out = X - a; out /= b`
+        # avoids allocating one extra NCHW-sized buffer here
+        out = X - unsqueeze_all(mean)
+        out /= unsqueeze_all(denom)
+        return out
+
+    @staticmethod
+    def backward(ctx, grad_out):
+        X, conv_weight, = ctx.saved_tensors
+        # (4) Batch norm backward
+        # (5) We need to recompute conv
+        X_conv_out = F.conv2d(X, conv_weight)
+        grad_out = batch_norm_backward(grad_out, X_conv_out, ctx.sum, ctx.sqrt_var,
+                                       ctx.N, ctx.eps)
+        # (6) Conv2d backward
+        grad_X, grad_input = convolution_backward(grad_out, X, conv_weight)
+        return grad_X, grad_input, None, None, None, None, None
+    
+class FusedConvBN(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, exp_avg_factor=0.1,
+                 eps=1e-3, device=None, dtype=None):
+        super(FusedConvBN, self).__init__()
+        factory_kwargs = {'device': device, 'dtype': dtype}
+        # Conv parameters
+        weight_shape = (out_channels, in_channels, kernel_size, kernel_size)
+        self.conv_weight = nn.Parameter(torch.empty(*weight_shape, **factory_kwargs))
+        # Batch norm parameters
+        num_features = out_channels
+        self.num_features = num_features
+        self.eps = eps
+        # Initialize
+        self.reset_parameters()
+
+    def forward(self, X):
+        return FusedConvBN2DFunction.apply(X, self.conv_weight, self.eps)
+
+    def reset_parameters(self) -> None:
+        nn.init.kaiming_uniform_(self.conv_weight, a=math.sqrt(5))
