@@ -13,3 +13,7 @@ It's posible with FC lib<br></p>
 <p>The new one class also going to use standart convolution arguments</p>
 <p>But there are no as aarguments, as padding or starait</p>
 <img src = "./Module_with_FC.png">
+<h2></h2>
+<img src = "./argm.png">
+<img src = "./argm.png">
+<p>At the example I show, what results are same. You need to use list for second tenzor</p>
